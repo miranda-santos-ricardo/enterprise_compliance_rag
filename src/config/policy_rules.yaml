@@ -1,0 +1,13 @@
+min_confidence_safe: 0.8
+min_confidence_review: 0.6
+
+block_if_risk_levels:
+  - critical
+
+block_if_issues_contain:
+  - "UNSUPPORTED_STATEMENT"
+  - "NO_CITATIONS"
+  - "CONTRADICTS_POLICY"
+
+review_if_risk_levels:
+  - high
