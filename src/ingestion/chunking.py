@@ -1,0 +1,48 @@
+from dataclasses import dataclass
+from typing import List, Dict, Any
+
+@dataclass
+class TextChunk:
+    policy_id: str
+    section_id: str
+    text: str
+    metadata: Dict[str, Any]
+
+def chunk_text(
+    policy_id: str,
+    text: str,
+    base_metadata: Dict[str, Any],
+    chunk_size: int = 1200,
+    overlap: int = 150,
+    ) -> List[TextChunk]:
+    """
+    Naive character-based chunking. Good enough for MVP.
+    """    
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return []
+
+    chunks: List[TextChunk] = []
+    start = 0
+    idx = 0
+
+    while start < len(cleaned):
+        end = min(len(cleaned), start + chunk_size)
+        chunk = cleaned[start:end].strip()
+
+        section_id = f"sec{idx:04d}"
+        md = dict(base_metadata)
+        md.update({"policy_id": policy_id,"section_id": section_id, "chunk_index": idx})
+
+        chunks.append(TextChunk(
+            policy_id=policy_id,
+            section_id=section_id,
+            text=chunk,
+            metadata=md))
+
+        idx += 1
+        start = end - overlap
+        if start < 0:
+            start = 0
+    
+    return chunks   
