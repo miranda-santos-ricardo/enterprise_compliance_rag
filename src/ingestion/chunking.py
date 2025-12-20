@@ -1,5 +1,7 @@
+# src/ingestion/chunking.py
 from dataclasses import dataclass
 from typing import List, Dict, Any
+
 
 @dataclass
 class TextChunk:
@@ -8,16 +10,17 @@ class TextChunk:
     text: str
     metadata: Dict[str, Any]
 
+
 def chunk_text(
     policy_id: str,
     text: str,
     base_metadata: Dict[str, Any],
-    chunk_size: int = 1200,
-    overlap: int = 150,
-    ) -> List[TextChunk]:
+    chunk_size: int = 1400,
+    overlap: int = 80,
+) -> List[TextChunk]:
     """
     Naive character-based chunking. Good enough for MVP.
-    """    
+    """
     cleaned = (text or "").strip()
     if not cleaned:
         return []
@@ -26,23 +29,22 @@ def chunk_text(
     start = 0
     idx = 0
 
+    print(len(cleaned))
+    
     while start < len(cleaned):
         end = min(len(cleaned), start + chunk_size)
-        chunk = cleaned[start:end].strip()
 
+        chunk = cleaned[start:end].strip()
         section_id = f"sec{idx:04d}"
         md = dict(base_metadata)
-        md.update({"policy_id": policy_id,"section_id": section_id, "chunk_index": idx})
-
-        chunks.append(TextChunk(
-            policy_id=policy_id,
-            section_id=section_id,
-            text=chunk,
-            metadata=md))
+        md.update({"policy_id": policy_id, "section_id": section_id, "chunk_index": idx})
+        chunks.append(TextChunk(policy_id=policy_id, section_id=section_id, text=chunk, metadata=md))
 
         idx += 1
-        start = end - overlap
-        if start < 0:
-            start = 0
-    
-    return chunks   
+        
+        if  (end - start) < chunk_size:
+            break
+        start = end - overlap  # overlap for continuity
+        start = max(start,0)
+        
+    return chunks
