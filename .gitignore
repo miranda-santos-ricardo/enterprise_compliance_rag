@@ -208,3 +208,4 @@ __marimo__/
 
 .ent_comp_rag_env/
 .ent_comp_rag_env/**/bin/   
+vectorstore/

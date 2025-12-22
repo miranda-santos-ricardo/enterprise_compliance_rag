@@ -1,13 +1,16 @@
 # src/main.py
 import os
+import traceback
 import sys
 
 from dotenv import load_dotenv
 
+from agents.answer_agent import AnswerAgent
 from ingestion.loader import load_policies
 from ingestion.chunking import chunk_text
 from ingestion.embedder import build_or_load_chroma, index_chunks
 from retrieval.retriever import retrieve_top_k, dedup_hits
+
 
 load_dotenv()
 
@@ -56,12 +59,41 @@ def main() -> None:
         hits = dedup_hits(hits, max_results=top_k)
 
         print("\n=== Retrieved Policy Excerpts ===")
+        context_lines = []
         for h in hits:
             preview = (h["text"] or "").replace("\n", " ")
-            preview = preview[:220] + ("..." if len(preview) > 220 else "")
-            print(f"- [{h['id']}] dist={h['distance']:.4f} | {preview}")
+            preview = preview
+
+            pid = h["metadata"].get("policy_id")
+            sid = h["metadata"].get("section_id")
+            src = h["metadata"].get("file_name")
+            print(f"- [{pid}:{sid}] dist={h['distance']:.4f} src={src} | {preview}")
+
+            cid = h["id"]
+            txt = (h["text"] or "").strip()
+            txt = " ".join(txt.split()) #normalize whitespace
+            context_lines.append(f"[{cid}] {txt}")
+
+            #preview = preview[:220] + ("..." if len(preview) > 220 else "")
+#            print(f"- [{h['id']}] dist={h['distance']:.4f} | {preview}")
+        agent = AnswerAgent.from_env()
+        proposal = agent.run(question, context_lines)
+
+        #get fake citations
+        retrived_ids = {h["id"] for h in hits}
+        bad = [c for c in proposal.citations if c not in retrived_ids]
+        if bad:
+            print(f"[Warning] Some citations were not in retrieved excerpts: {bad}")
+
+        print("\n=== Answer Proposal ===")
+        print(proposal.answer)
+        print("\nCitations:", proposal.citations)
+        if proposal.assumptions:
+            print("Assumptions:", proposal.assumptions)
+
     except Exception as e:
         print(e)
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()

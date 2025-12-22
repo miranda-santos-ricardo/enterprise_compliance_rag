@@ -1,25 +1,79 @@
-PROMPT_ANSWER_AGENT= """You are the Answer Agent for enterprise policies.
+import os
+import json
+from dataclasses import dataclass
+from typing import List
+
+from openai import OpenAI
+
+from models.types import AnswerProposal
+
+ANSWER_PROMPT = """You are the Answer Agent for enterprise policy Q&A.
 
 You will receive:
 - A user question
-- A set of policy excerpts, each with an ID such as "policy1:sec3".
+- A set of policy excerpts, each with an ID like "vacation-time-policy:sec0003"
 
-Your job:
-1. Propose a clear answer to the question.
-2. Only rely on the given excerpts. If the excerpts are not enough, say so.
-3. Explicitly reference the relevant excerpts by their IDs.
-4. State any assumptions you had to make.
+Rules (non-negotiable):
+1) Use ONLY the provided excerpts. Do not use outside knowledge.
+2) Every factual statement must be supported by at least one cited excerpt ID.
+3) If the excerpts are insufficient to answer safely, say so explicitly.
+4) Be concise. Avoid unnecessary text.
 
-Return ONLY valid JSON with the schema:
+Return ONLY valid JSON in this exact schema:
 {
-  "answer": "...",
-  "citations": ["policyX:secY", ...],
+  "answer": "string",
+  "citations": ["policy-id:section-id", "..."],
   "assumptions": ["...", "..."]
 }
+
 Question:
 {{question}}
 
 Policy excerpts:
 {{context}}
-Make sure the JSON is properly formatted.
 """
+
+@dataclass
+class AnswerAgent:
+  client: OpenAI
+  model: str
+
+  @classmethod
+  def from_env(cls) -> "AnswerAgent":
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
+      raise RuntimeError("OPENAI_API_KEY is missing.")
+    model = os.environ.get("MODEL_ID","gpt-4.1-mini")
+    return cls(client=OpenAI(api_key=api_key),model=model)
+
+  def run(self, question: str, context_lines: List[str]) -> AnswerProposal:
+    context = "\n".join(context_lines)
+    prompt = ANSWER_PROMPT.replace("{{question}}", question).replace("{{context}}", context)
+
+    resp = self.client.chat.completions.create(
+      model = self.model,
+      messages = [
+        {"role":"system","content":"You answer policy questions using ONLY provided excerpts."},
+        {"role":"user","content":prompt}
+      ],
+      response_format = {"type":"json_object"},
+    )
+
+    raw = resp.choices[0].message.content or {}
+    data = json.loads(raw)
+
+    #defensive parsing
+    answer = str(data.get("answer", "")).strip()
+    citations = data.get("citations", [])
+    assumptions = data.get("assumptions", [])
+
+    if not isinstance(citations, list):
+      citations = []
+    if not isinstance(assumptions, list):
+      assumptions = []
+    
+    return AnswerProposal(
+      answer=answer,
+      citations=citations,
+      assumptions=assumptions
+    )

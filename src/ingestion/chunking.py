@@ -28,9 +28,7 @@ def chunk_text(
     chunks: List[TextChunk] = []
     start = 0
     idx = 0
-
-    print(len(cleaned))
-    
+        
     while start < len(cleaned):
         end = min(len(cleaned), start + chunk_size)
 

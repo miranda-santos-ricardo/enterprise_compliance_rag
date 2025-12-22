@@ -1,5 +1,6 @@
 # src/ingestion/loader.py
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
@@ -14,6 +15,11 @@ class LoadedDoc:
     text: str
     metadata: Dict[str, Any]
 
+def slugify(s: str) -> str:
+    s = s.strip().lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    s = re.sub(r"-+", "-", s).strip("-")
+    return s
 
 def _load_pdf(path: Path) -> Tuple[str, Dict[str, Any]]:
     reader = PdfReader(str(path))
@@ -22,6 +28,8 @@ def _load_pdf(path: Path) -> Tuple[str, Dict[str, Any]]:
 
     meta = reader.metadata or {}
     title = getattr(meta, "title", None) or path.stem
+
+    text = clean_pdf_text(text)
 
     md = {
         "source_path": os.path.abspath(str(path)),
@@ -66,11 +74,32 @@ def load_policies(data_dir: str) -> List[LoadedDoc]:
         else:
             continue  # ignore unknown formats
 
-        policy_id = path.stem
-        title = md.get("title", policy_id)
+        policy_id = slugify(path.stem)
+        title = md.get("title", path.stem)
         docs.append(LoadedDoc(policy_id=policy_id, title=title, text=text, metadata=md))
 
     if not docs:
         raise ValueError(f"No supported policy files found in: {data_dir}")
 
     return docs
+
+
+
+def clean_pdf_text(text: str) -> str:
+    if not text:
+        return ""
+    # normalize whitespace
+    t = re.sub(r"\r\n", "\n", text)
+    t = re.sub(r"[ \t]+", " ", t)
+
+    # remove common “Page header/footer” patterns (customize later)
+    patterns = [
+        r"Vacation Time Policy \| Department of Human Resources\s*\d+",
+        r"Department of Human Resources\s*\d+",
+    ]
+    for p in patterns:
+        t = re.sub(p, "", t)
+
+    # remove excessive blank lines
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
