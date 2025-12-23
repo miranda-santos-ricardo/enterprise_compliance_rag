@@ -10,6 +10,9 @@ class TextChunk:
     text: str
     metadata: Dict[str, Any]
 
+def looks_like_table(s:str) -> bool:
+    digits = sum(ch.isdigit() for ch in s)
+    return digits / max(len(s),1) > 0.18
 
 def chunk_text(
     policy_id: str,
@@ -36,6 +39,11 @@ def chunk_text(
         section_id = f"sec{idx:04d}"
         md = dict(base_metadata)
         md.update({"policy_id": policy_id, "section_id": section_id, "chunk_index": idx})
+
+        #drop chunks that looks like table 
+        if looks_like_table(chunk):
+            continue
+
         chunks.append(TextChunk(policy_id=policy_id, section_id=section_id, text=chunk, metadata=md))
 
         idx += 1

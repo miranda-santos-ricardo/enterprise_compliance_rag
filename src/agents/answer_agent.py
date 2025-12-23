@@ -21,9 +21,12 @@ Rules (non-negotiable):
 
 Return ONLY valid JSON in this exact schema:
 {
-  "answer": "string",
-  "citations": ["policy-id:section-id", "..."],
+  "claims": [
+    {"text":"...", "citations": ["policy-id:section-id", "..."]},
+    {"text":"...", "citations": ["policy-id:section-id", "..."]},
+  ],
   "assumptions": ["...", "..."]
+  "final_answer": "string"
 }
 
 Question:
@@ -62,18 +65,21 @@ class AnswerAgent:
     raw = resp.choices[0].message.content or {}
     data = json.loads(raw)
 
+    print(data)
+    
     #defensive parsing
-    answer = str(data.get("answer", "")).strip()
-    citations = data.get("citations", [])
+    claims = data.get("claims", [])
     assumptions = data.get("assumptions", [])
-
-    if not isinstance(citations, list):
-      citations = []
+    final_answer = str(data.get("final_answer","")).strip()
+    
+    if not isinstance(claims, list):
+      claims=[]
+   
     if not isinstance(assumptions, list):
       assumptions = []
     
     return AnswerProposal(
-      answer=answer,
-      citations=citations,
-      assumptions=assumptions
+      claims=claims,
+      assumptions=assumptions,
+      final_answer = final_answer
     )

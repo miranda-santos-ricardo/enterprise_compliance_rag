@@ -9,7 +9,7 @@ class RiskLevel(str, Enum):
     CRITICAL = "critical"
 
 class DecisionStatus(str, Enum):
-    SAFE = "sate_to_use"
+    SAFE = "safe_to_use"
     REVIEW = "review_required"
     BLOCK = "do_not_use"
 
@@ -26,10 +26,15 @@ class RetrievedContext:
     chunks: List[Chunk]
 
 @dataclass
-class AnswerProposal:
-    answer: str
+class Claim:
+    text: str
     citations: List[str]
+
+@dataclass
+class AnswerProposal:
+    claims: List[Claim]
     assumptions: List[str]
+    final_answer: str
 
 @dataclass
 class PolicyAssessment:

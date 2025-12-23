@@ -6,11 +6,13 @@ import sys
 from dotenv import load_dotenv
 
 from agents.answer_agent import AnswerAgent
+from agents.policy_agent import PolicyAgent
 from ingestion.loader import load_policies
 from ingestion.chunking import chunk_text
 from ingestion.embedder import build_or_load_chroma, index_chunks
 from retrieval.retriever import retrieve_top_k, dedup_hits
-
+from control.grounding_checks import citations_in_retrieved, citation_relevance_heuristic
+from control.evaluator import evaluate
 
 load_dotenv()
 
@@ -76,20 +78,56 @@ def main() -> None:
 
             #preview = preview[:220] + ("..." if len(preview) > 220 else "")
 #            print(f"- [{h['id']}] dist={h['distance']:.4f} | {preview}")
+        
+        #map of retrieved chunk texts
+        retrieved_map = {h["id"]: (h["text"] or "") for h in hits}
+        retrieved_ids = set(retrieved_map.keys())
+
+        #Generate the answer to user question
         agent = AnswerAgent.from_env()
         proposal = agent.run(question, context_lines)
+        
+        print("\n Verify issues in the answer")
+        issues = []
+        for i, c in enumerate(proposal.claims):
+            bad = citations_in_retrieved(c, retrieved_ids)
+            if bad:
+                issues.append(f"CLAIM_{i}_CITES_UNKNOWN_IDS:{bad}")
 
-        #get fake citations
-        retrived_ids = {h["id"] for h in hits}
-        bad = [c for c in proposal.citations if c not in retrived_ids]
-        if bad:
-            print(f"[Warning] Some citations were not in retrieved excerpts: {bad}")
+            cited_texts = [retrieved_map[x] for x in c["citations"] if x in retrieved_map]
+            if not citation_relevance_heuristic(c["text"], cited_texts):
+                issues.append(f"CLAIM_{i}_CITATIONS_LOOK_WEAK")
 
-        print("\n=== Answer Proposal ===")
-        print(proposal.answer)
-        print("\nCitations:", proposal.citations)
-        if proposal.assumptions:
-            print("Assumptions:", proposal.assumptions)
+        if issues:
+            print("\n[PreCheck Issues]")
+            for it in issues:
+                print("-", it)
+        
+        #print("\n=== Answer Proposal ===")
+        #print(proposal.final_answer)
+        #print("\nClaims:", proposal.claims)
+        #if proposal.assumptions:
+        #    print("Assumptions:", proposal.assumptions)
+
+        policy_agent = PolicyAgent.from_env()
+        assessment = policy_agent.run(
+            question,
+            context_lines,
+            proposal.claims
+        )
+
+        decision = evaluate(assessment)
+
+        print("\n=== Policy Verification ===")
+        print("Compliant:", assessment.is_compliant)
+        print("Risk:", assessment.risk_level.value)
+        print("Confidence:", assessment.confidence)
+        print("Issues:", assessment.issues)
+
+        print("\n=== Final Decision ===")
+        print(decision.status.value)
+        for r in decision.reasons:
+            print("-", r)
 
     except Exception as e:
         print(e)
