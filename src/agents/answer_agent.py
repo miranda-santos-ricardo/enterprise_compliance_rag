@@ -18,6 +18,11 @@ Rules (non-negotiable):
 2) Every factual statement must be supported by at least one cited excerpt ID.
 3) If the excerpts are insufficient to answer safely, say so explicitly.
 4) Be concise. Avoid unnecessary text.
+5) Each claim must express one policy rule only.
+6) Avoid ‘and/including’ unless it’s a single tight clause.
+7) If you mention another rule it must be a separate claim with its own citation.
+8) final answer has to follow the structure: statement[section-id]. Example: Initial entitlement: typically 15 days. [sec002].
+9) If a claim relies on a Schedule, Appendix, Table, or Matrix, the claim text MUST explicitly name it (e.g., ‘Appendix A (Vacation Schedule)’). Do not rely on citations alone.
 
 Return ONLY valid JSON in this exact schema:
 {

@@ -13,6 +13,7 @@ from ingestion.embedder import build_or_load_chroma, index_chunks
 from retrieval.retriever import retrieve_top_k, dedup_hits
 from control.grounding_checks import citations_in_retrieved, citation_relevance_heuristic
 from control.evaluator import evaluate
+from control.hard_gates import run_hard_gates
 
 load_dotenv()
 
@@ -20,20 +21,15 @@ load_dotenv()
 def ensure_indexed(data_dir: str, persist_dir: str, embed_model: str) -> None:
     collection = build_or_load_chroma(persist_dir)
 
-    # If already has data, skip (simple heuristic)
-    #if collection.count() > 0:
-    #    return
+    # Re-index each run while you're iterating (optional)
+    # If you want caching later, re-enable the count() early return.
+    # if collection.count() > 0:
+    #     return
 
     docs = load_policies(data_dir)
 
-    #print("--")
-    #print(docs)
-
     all_chunks = []
     for d in docs:
-        #print('222')
-        #print(d)
-        #print('333')
         chunks = chunk_text(d.policy_id, d.text, d.metadata)
         all_chunks.extend(chunks)
 
@@ -64,7 +60,6 @@ def main() -> None:
         context_lines = []
         for h in hits:
             preview = (h["text"] or "").replace("\n", " ")
-            preview = preview
 
             pid = h["metadata"].get("policy_id")
             sid = h["metadata"].get("section_id")
@@ -73,20 +68,18 @@ def main() -> None:
 
             cid = h["id"]
             txt = (h["text"] or "").strip()
-            txt = " ".join(txt.split()) #normalize whitespace
+            txt = " ".join(txt.split())
             context_lines.append(f"[{cid}] {txt}")
 
-            #preview = preview[:220] + ("..." if len(preview) > 220 else "")
-#            print(f"- [{h['id']}] dist={h['distance']:.4f} | {preview}")
-        
-        #map of retrieved chunk texts
+        # map of retrieved chunk texts
         retrieved_map = {h["id"]: (h["text"] or "") for h in hits}
         retrieved_ids = set(retrieved_map.keys())
 
-        #Generate the answer to user question
+        # Generate answer proposal
         agent = AnswerAgent.from_env()
         proposal = agent.run(question, context_lines)
-        
+
+        # Lightweight pre-checks (soft warnings)
         print("\n Verify issues in the answer")
         issues = []
         for i, c in enumerate(proposal.claims):
@@ -102,21 +95,49 @@ def main() -> None:
             print("\n[PreCheck Issues]")
             for it in issues:
                 print("-", it)
-        
-        #print("\n=== Answer Proposal ===")
-        #print(proposal.final_answer)
-        #print("\nClaims:", proposal.claims)
-        #if proposal.assumptions:
-        #    print("Assumptions:", proposal.assumptions)
 
+        print("\n=== Answer Proposal ===")
+        print(proposal.final_answer)
+        #print("\nClaims:", proposal.claims)
+        if proposal.assumptions:
+            print("Assumptions:", proposal.assumptions)
+
+        ###########################################################        
+        #print("\n=== DEBUG: Show full text of cited chunks ===")
+        #for c in proposal.claims:
+        #    for cid in c["citations"]:
+        #        txt = retrieved_map.get(cid, "")
+        #        print(f"\n--- {cid} ---\n{txt[:1200]}\n")
+        ###########################################################
+
+
+        # HARD GATES (must block SAFE)
+        hard_issues = []
+        for i, c in enumerate(proposal.claims):
+            gate_issues = run_hard_gates(c, retrieved_map)
+            for it in gate_issues:
+                hard_issues.append(f"CLAIM_{i}:{it}")
+
+        if hard_issues:
+            print("\n=== Hard Gate Failures ===")
+            for it in hard_issues:
+                print("-", it)
+
+        # Policy verification (LLM)
         policy_agent = PolicyAgent.from_env()
-        assessment = policy_agent.run(
-            question,
-            context_lines,
-            proposal.claims
-        )
+        assessment = policy_agent.run(question, context_lines, proposal.claims)
 
         decision = evaluate(assessment)
+
+        # DECISION OVERRIDE: hard gates > LLM verifier
+        print("\n=== Hard Gates Summary ===")
+        print("Hard issues count:", len(hard_issues))
+        if hard_issues:
+            print("\n=== Final Decision Override (Hard Gates) ===")
+            print("do_not_use")
+            for it in hard_issues:
+                print("-", it)
+            return
 
         print("\n=== Policy Verification ===")
         print("Compliant:", assessment.is_compliant)
@@ -132,6 +153,7 @@ def main() -> None:
     except Exception as e:
         print(e)
         traceback.print_exc()
+
 
 if __name__ == "__main__":
     main()

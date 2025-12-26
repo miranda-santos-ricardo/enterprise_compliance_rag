@@ -41,14 +41,11 @@ def retrieve_top_k(collection, question: str, embed_model: str, k: int = 5) -> L
     return hits
 
 def dedup_hits(hits, max_results=5):
-    seen = set()
-    out = []
+    seen_ids = set()
+    unique_hits = []
     for h in hits:
-        norm = " ".join((h["text"] or "").split())[:500]  # normalize whitespace + cap
-        if norm in seen:
+        if h["id"] in seen_ids:
             continue
-        seen.add(norm)
-        out.append(h)
-        if len(out) >= max_results:
-            break
-    return out
+        seen_ids.add(h["id"])
+        unique_hits.append(h)
+    return unique_hits
