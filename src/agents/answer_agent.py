@@ -30,9 +30,19 @@ Return ONLY valid JSON in this exact schema:
     {"text":"...", "citations": ["policy-id:section-id", "..."]},
     {"text":"...", "citations": ["policy-id:section-id", "..."]},
   ],
-  "assumptions": ["...", "..."]
+  "assumptions": [
+    {"type": "A1_SCOPE", "text": "...", "impact":"low"},
+    {"type": "A2_INTERPRETATION", "text": "...", "impact":"medium"},
+  ],
   "final_answer": "string"
 }
+
+Reference for assumptions types:
+A1_SCOPE
+A2_INTERPRETATION
+A3_MISSING_CONTEXT
+
+Reference for assumptions impact: low|medium|high
 
 Question:
 {{question}}
