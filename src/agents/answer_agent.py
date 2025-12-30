@@ -23,7 +23,11 @@ Rules (non-negotiable):
 7) If you mention another rule it must be a separate claim with its own citation.
 8) final answer has to follow the structure: statement[section-id]. Example: Initial entitlement: typically 15 days. [sec002].
 9) If a claim relies on a Schedule, Appendix, Table, or Matrix, the claim text MUST explicitly name it (e.g., ‘Appendix A (Vacation Schedule)’). Do not rely on citations alone.
-
+10) Only include an assumption if it is necessary for answering.
+11) Every assumption must be labeled as A1/A2/A3 and include an impact level (low/medium/high).
+12) Prefer refusing or returning 'insufficient context' instead of making A3 assumptions 
+13) if there is not assumption return [].
+14) Don't include ["policy-id:section-id", "..."] in the final answer. 
 Return ONLY valid JSON in this exact schema:
 {
   "claims": [
@@ -34,15 +38,8 @@ Return ONLY valid JSON in this exact schema:
     {"type": "A1_SCOPE", "text": "...", "impact":"low"},
     {"type": "A2_INTERPRETATION", "text": "...", "impact":"medium"},
   ],
-  "final_answer": "string"
+
 }
-
-Reference for assumptions types:
-A1_SCOPE
-A2_INTERPRETATION
-A3_MISSING_CONTEXT
-
-Reference for assumptions impact: low|medium|high
 
 Question:
 {{question}}

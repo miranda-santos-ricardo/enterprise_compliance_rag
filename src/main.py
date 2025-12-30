@@ -14,6 +14,8 @@ from retrieval.retriever import retrieve_top_k, dedup_hits
 from control.grounding_checks import citations_in_retrieved, citation_relevance_heuristic
 from control.evaluator import evaluate
 from control.hard_gates import run_hard_gates
+from control.assumption_gate import classify_assumptions
+from control.assumption_detector import detect_assumptions
 
 load_dotenv()
 
@@ -96,11 +98,18 @@ def main() -> None:
             for it in issues:
                 print("-", it)
 
-        print("\n=== Answer Proposal ===")
-        print(proposal.final_answer)
-        #print("\nClaims:", proposal.claims)
-        if proposal.assumptions:
-            print("Assumptions:", proposal.assumptions)
+        #print("\n=== Answer Proposal ===")
+        #print(proposal.final_answer)
+        #print("\nPROPOSAL:", proposal)
+        #if proposal.assumptions:
+        #    print("Assumptions:", proposal.assumptions)
+
+        print("\n=== Answer (Summary) ===")
+        summary_claim_ids = [0, 1, 3, 4]  # choose the minimal set
+        for i in summary_claim_ids:
+            c = proposal.claims[i]
+            cites = " ".join([f"[{x}]" for x in c.get("citations", [])])
+            print(f"- {c['text']} {cites}")
 
         ###########################################################        
         #print("\n=== DEBUG: Show full text of cited chunks ===")
@@ -127,7 +136,51 @@ def main() -> None:
         policy_agent = PolicyAgent.from_env()
         assessment = policy_agent.run(question, context_lines, proposal.claims)
 
+        #detect assumptions
+        detected = detect_assumptions(question, proposal.claims, context_lines)
+        # Merge + dedup by (type,text)
+        merged = proposal.assumptions if isinstance(proposal.assumptions, list) else []
+        all_assumptions = merged + detected
+        dedup = {}
+        for a in all_assumptions:
+            key = (a.get("type"), a.get("text"))
+            dedup[key] = a
+        proposal.assumptions = list(dedup.values())
+
+        #classify assumptions
+        override, cap, a_issues = classify_assumptions(proposal.assumptions)
+        if assessment.confidence > cap:
+            assessment.confidence = cap
+        if a_issues:
+            assessment.issues.extend(a_issues)
+
+        print("\n=== Assumptions ===")
+        if proposal.assumptions:
+            for a in proposal.assumptions:
+                print(f"- {a['type']} ({a['impact']}): {a['text']}")
+        else:
+            print("- None")
+        print("Override:", override or "(none)")
+
+        # override final decision
+        if override == "BLOCK":
+            print("\n=== Final Decision Override (Assumptions) ===")
+            print("do_not_use")
+            for it in a_issues:
+                print("-", it)
+            return
+        
+
         decision = evaluate(assessment)
+        
+        print(f"Confidence: {decision.assessment.confidence:.2f}")
+
+        if override == "REVIEW":# and decision.status.value == "safe_to_use":
+            print("\n=== Final Decision Override (Assumptions) ===")
+            print("review_required")
+            for it in a_issues:
+                print("-", it)
+            return
 
         # DECISION OVERRIDE: hard gates > LLM verifier
         print("\n=== Hard Gates Summary ===")
@@ -138,7 +191,12 @@ def main() -> None:
             for it in hard_issues:
                 print("-", it)
             return
-
+        
+        #print("\n=== Claims ===")
+        #for i, c in enumerate(proposal.claims):
+        #    print(f"{i}. {c['text']}")
+        #    print(f"   citations: {c.get('citations', [])}")
+            
         print("\n=== Policy Verification ===")
         print("Compliant:", assessment.is_compliant)
         print("Risk:", assessment.risk_level.value)
@@ -147,8 +205,13 @@ def main() -> None:
 
         print("\n=== Final Decision ===")
         print(decision.status.value)
-        for r in decision.reasons:
-            print("-", r)
+
+        if assessment.issues:
+            print("Notes:")
+            for it in assessment.issues:
+                print("-", it)
+        else:
+            print("- No issues detected. Answer is compliant.")
 
     except Exception as e:
         print(e)
